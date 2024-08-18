@@ -63,7 +63,8 @@ namespace infini
         // =================================== 作业 ===================================
         // TODO: 设计一个算法来回收内存
         // =================================== 作业 ===================================
-        for(auto i = fb_map.begin(); i != fb_map.end(); i++){
+        auto i = fb_map.begin();
+        for(; i != fb_map.end(); i++){
             if(i->first + i->second == addr){
                 i->second += size;
                 auto j = std::next(i);
