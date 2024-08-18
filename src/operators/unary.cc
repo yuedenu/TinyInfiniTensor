@@ -39,7 +39,12 @@ namespace infini
         // TODO：返回经过 clip 操作后的 shape
         // REF: https://onnx.ai/onnx/operators/onnx__Clip.html#clip-13
         // =================================== 作业 ===================================
-        return std::nullopt;
+        vector<Shape> shapes = std::nullopt;
+        for (const auto &tensor : inputs) {
+            Shape shape = tensor->getDims(); // return shape;
+            shapes.push_back(shape);
+        }
+        return shapes;
     }
 
     std::string ClipObj::toString() const
