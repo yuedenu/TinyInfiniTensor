@@ -29,8 +29,8 @@ namespace infini
         // REF: https://github.com/onnx/onnx/blob/main/docs/Operators.md#gemm
         // =================================== 作业 ===================================
         
-        const auto& A{inputs[0]};
-        const auto& B{inputs[1]};
+        const auto& A = inputs[0];
+        const auto& B = inputs[1];
         Shape result{infer_broadcast(A->getDims(), B->getDims())};
 
         if (transA) {
