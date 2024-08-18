@@ -1,8 +1,13 @@
 #include "core/graph.h"
+#include "core/common.h"
+#include "core/op_type.h"
+#include "core/runtime.h"
+#include "operators/transpose.h"
+#include "operators/matmul.h"
 #include <algorithm>
+#include <cstddef>
 #include <numeric>
 #include <queue>
-
 namespace infini
 {
 
@@ -106,58 +111,123 @@ namespace infini
         // 1. 去除冗余的算子（例如，两个相邻的算子都是 transpose 算子，且做的是相反的操作，可以将其全部删除）
         // 2. 合并算子（例如，矩阵乘算子中含有属性transA、transB，如果其输入存在transpose，且对最后两个维度做交换，就可以将transpose融入到矩阵乘算子的属性中去）
         // =================================== 作业 ===================================
-        auto sources = this->getInputs();
-        for (auto& tensor : sources) {
-            WRef<TensorObj> current = refs_to_wrefs<TensorObj>({tensor})[0];
-            while (current.lock()->getTargets().size()) {
-                if (current.lock()->getTargets()[0]->getOpType() == OpType::Transpose && 
-                    current.lock()->getTargets()[0]->getOutputs()[0]->getTargets().size()) {
-                    WRef<OperatorObj> next_op = 
-                        refs_to_wrefs<OperatorObj>({current.lock()->getTargets()[0]->getOutputs()[0]->getTargets()[0]})[0];
-                    if (next_op.lock()->getOpType() == OpType::Transpose) {
-                        auto current_op_perm = ((TransposeObj*)current.lock()->getTargets()[0].get())->getPermute();
-                        auto next_op_perm = ((TransposeObj*)next_op.lock().get())->getPermute();
-                        if (current_op_perm == next_op_perm) {
-                            auto new_target =next_op.lock()->getOutputs()[0]->getTargets()[0]; 
-                            new_target->removePredecessors(wrefs_to_refs<OperatorObj>({next_op})[0]);
-                            current.lock()->addTarget(new_target);
-                            new_target->replaceInput(next_op.lock()->getOutputs()[0], wrefs_to_refs<TensorObj>({current})[0]);
+        if (ops.empty()) {
+            return;
+        }
 
-                            this->removeTensor(next_op.lock()->getOutputs()[0]);
-                            this->removeTensor(current.lock()->getTargets()[0]->getOutputs()[0]);
+        IT_ASSERT(topo_sort() == true);
+        bool optimized_this_pass{false};
+        for (size_t i = 0; i < ops.size();) {
+            optimized_this_pass = false;
+            auto& op{ops.at(i)};
+            // rule 1, 2
+            if (op->type == OpType::Transpose) {
+                const auto& perm{as<TransposeObj>(op)->getPermute()};
+                for (auto& succ: op->successors) {
+                    auto succ_ptr{succ.lock()};
+                    if (!succ_ptr) {
+                        continue;
+                    }
 
-                            auto removed_target = current.lock()->getTargets()[0];
-                            current.lock()->removeTarget(removed_target);
-                            this->removeOperator(wrefs_to_refs<OperatorObj>({next_op})[0]);
-                            this->removeOperator(removed_target);
-                        }
-                    } else if (next_op.lock()->getOpType() == OpType::MatMul) {
-                        auto current_op_perm = ((TransposeObj*)current.lock()->getTargets()[0].get())->getPermute();
-                        if ((size_t)current_op_perm[current_op_perm.size() - 1] == current_op_perm.size() - 2 &&
-                            (size_t)current_op_perm[current_op_perm.size() - 2] == current_op_perm.size() - 1) {                            
-                            auto removed_target = current.lock()->getTargets()[0];
-                            auto new_target = removed_target->getOutputs()[0]->getTargets()[0];
+                    // rule 1
+                    if (succ_ptr->type == OpType::Transpose) {
+                        const auto& succ_perm{as<TransposeObj>(succ_ptr)->getPermute()};
+                        if (perm == succ_perm) {
+                            for (auto& succ2: succ_ptr->successors) {
+                                auto succ2_ptr{succ2.lock()};
+                                if (!succ2_ptr) {
+                                    continue;
+                                }
 
-                            new_target->replaceInput(removed_target->getOutputs()[0], wrefs_to_refs<TensorObj>({current})[0]);
-                            if (new_target->inputs[0] == current.lock()) {
-                                MatmulObj* new_target_ptr = (MatmulObj*)new_target.get();
-                                new_target_ptr->setTransA(true);
-                            } else {
-                                MatmulObj* new_target_ptr = (MatmulObj*)new_target.get();
-                                new_target_ptr->setTransB(true);
+                                // release tensor
+                                for (auto t: op->outputs) {
+                                    removeTensor(t);
+                                }
+                                for (auto t: succ_ptr->outputs) {
+                                    removeTensor(t);
+                                }
+
+                                // reconnect
+                                for (size_t i = 0; i < succ2_ptr->inputs.size(); ++i) {
+                                    if (succ2_ptr->inputs[i] == succ_ptr->outputs[0]) {
+                                        succ2_ptr->inputs[i] = op->inputs[0];
+                                    }
+                                }
+                                for (auto& input: succ2_ptr->inputs) {
+                                    input->removeTarget(op);
+                                    input->addTarget(succ2_ptr);
+                                }
+                                succ2_ptr->removePredecessors(succ_ptr);
                             }
-                            new_target->removePredecessors(removed_target);
-                            current.lock()->removeTarget(removed_target);
-                            current.lock()->addTarget(new_target);
 
-                            this->removeTensor(removed_target->getOutputs()[0]);
-                            this->removeOperator(removed_target);
+                            // remove from ops
+                            for (auto it = ops.begin(); it != ops.end();) {
+                                if (*it == op) {
+                                    ops.erase(it);
+                                    break;
+                                } else {
+                                    ++it;
+                                }
+                            }
+
+                            for (auto it = ops.begin(); it != ops.end();) {
+                                if (*it == succ_ptr) {
+                                    ops.erase(it);
+                                    break;
+                                } else {
+                                    ++it;
+                                }
+                            }
+                            // The graph structure has been modified, we optimize from the begining
+                            i = 0;
+                            optimized_this_pass = true;
+                        }
+                    } else if (succ_ptr->type == OpType::MatMul) {
+                        // rule 2
+                        if ((perm.at(perm.size() - 1) == static_cast<int>(perm.size()) - 2) &&
+                            (perm.at(perm.size() - 2) == static_cast<int>(perm.size()) - 1)) {
+                            // can been trans
+                            if (op->outputs[0] == succ_ptr->inputs[0]) {
+                                // trans A
+                                as<MatmulObj>(succ_ptr)->setTransA(true);
+                                succ_ptr->inputs[0] = op->inputs[0];
+                                succ_ptr->inputs[0]->removeTarget(op);
+                                succ_ptr->inputs[0]->addTarget(succ_ptr);
+                            } else {
+                                // trans B
+                                as<MatmulObj>(succ_ptr)->setTransB(true);
+                                succ_ptr->inputs[1] = op->inputs[0];
+                                succ_ptr->inputs[1]->removeTarget(op);
+                                succ_ptr->inputs[1]->addTarget(succ_ptr);
+                            }
+                            // release tensor
+                            removeTensor(op->outputs[0]);
+                            // reconnect
+                            succ_ptr->removePredecessors(op);
+
+                            // remove from ops
+                            for (auto it = ops.begin(); it != ops.end();) {
+                                if (*it == op) {
+                                    ops.erase(it);
+                                    break;
+                                } else {
+                                    ++it;
+                                }
+                            }
+                            // The graph structure has been modified, we optimize from the begining
+                            i = 0;
+                            optimized_this_pass = true;
                         }
                     }
                 }
-                current = current.lock()->getTargets()[0]->getOutputs()[0];
+            }
+
+            if(!optimized_this_pass) {
+                ++i;
             }
         }
+
+        IT_ASSERT(topo_sort() == true);
     }
 
     Tensor GraphObj::getTensor(int fuid) const
