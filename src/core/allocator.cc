@@ -30,7 +30,7 @@ namespace infini
         size = this->getAlignedSize(size);
 
         // =================================== 作业 ===================================
-        // TODO: 设计一个算法来分配内存，返回起始地址偏移量
+        // TODO: 设计一个算法来分配内存，返回起始地址偏移量1
         // =================================== 作业 ===================================
         auto target{recycle_map_.end()};
         for (auto it = recycle_map_.begin(); it != recycle_map_.end(); ++it) {
