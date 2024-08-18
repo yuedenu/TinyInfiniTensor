@@ -11,17 +11,17 @@ Shape infer_broadcast(const Shape &A, const Shape &B) {
     // =================================== 作业 ===================================
     Shape output = Shape(std::max(A.size(), B.size()));
     if (A.size() > B.size()) {
-        auto max = A;
-        auto min = B;
+        auto x = A;
+        auto n = B;
     } else {
-        auto max = B;
-        auto min = A;
+        auto x = B;
+        auto n = A;
     }
-    for (int i = max.size() - 1, j = min.size() - 1; i >= 0; i--, j--) {
+    for (int i = x.size() - 1, j = n.size() - 1; i >= 0; i--, j--) {
         if (j < 0) {
-            output[i] = max[i];
+            output[i] = x[i];
         } else {
-            max[i] == 1 ? output[i] = min[j] : output[i] = max[i];
+            x[i] == 1 ? output[i] = n[j] : output[i] = x[i];
         }
     }
     return output;
