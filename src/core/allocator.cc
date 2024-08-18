@@ -33,7 +33,7 @@ namespace infini
         // TODO: 设计一个算法来分配内存，返回起始地址偏移量
         // =================================== 作业 ===================================
         auto f = 0;
-        auto min;
+        auto min = fb_map.begin();
         for(auto i = fb_map.begin(); i != fb_map.end(); i++){
             if(i->second >= size){
                 if(f == 0){
@@ -42,7 +42,7 @@ namespace infini
                 }else if(min->second > i->second) min = i;
             }
         }
-        auto addr;
+        auto addr = 0;
         if(f == 0){
             addr = used;
             used += size;
@@ -63,7 +63,7 @@ namespace infini
         // =================================== 作业 ===================================
         // TODO: 设计一个算法来回收内存
         // =================================== 作业 ===================================
-        for(auto i = fb_map.begin(); i < fb_map.end(); i++){
+        for(auto i = fb_map.begin(); i != fb_map.end(); i++){
             if(i->first + i->second == addr){
                 i->second += size;
                 auto j = i+1;
