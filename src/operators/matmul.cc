@@ -29,7 +29,7 @@ namespace infini
         // =================================== 作业 ===================================
         const auto& A = inputs[0];
         const auto& B = inputs[1];
-        Shape result = infer_broadcast(A->getDims(), B->getDims());
+        Shape result{infer_broadcast(A->getDims(), B->getDims())};
 
         if (transA) {
             result.at(result.size() - 2) = A->getDims().at(A->getDims().size() - 1);
