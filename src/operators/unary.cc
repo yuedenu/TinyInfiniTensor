@@ -38,11 +38,13 @@ namespace infini
         // =================================== 作业 ===================================
         // TODO：返回经过 clip 操作后的 shape
         // REF: https://onnx.ai/onnx/operators/onnx__Clip.html#clip-13
+        // Clip 运算符将给定输入限制在一个间隔内。间隔为 由输入“min”和“max”指定。
+        // 它们默认为 分别为 numeric_limits：：lowest（） 和 numeric_limits：：max（）。
         // =================================== 作业 ===================================
-        vector<Shape> shapes = std::nullopt;
+        if (inputs.empty()) return std::nullopt;
+        vector<Shape> shapes;
         for (const auto &tensor : inputs) {
-            Shape shape = tensor->getDims(); // return shape;
-            shapes.push_back(shape);
+            shapes.push_back(tensor->getDims());// return shape;
         }
         return shapes;
     }
@@ -70,8 +72,9 @@ namespace infini
         // TODO：返回经过 cast 操作后, 输出 tensor 的数目和数据类型
         // REF_FILE: src/core/operator.cc
         // REF: https://onnx.ai/onnx/operators/onnx__Cast.html#cast-21
+        // cast 操作用于改变张量元素的数据类型
         // =================================== 作业 ===================================
-        return {};
+        return vector(numOutputs(), getOutputDataType());
     }
 
     optional<vector<Shape>> CastObj::inferShape(const TensorVec &inputs)
@@ -80,7 +83,11 @@ namespace infini
         // TODO：返回经过 cast 操作后的 shape
         // REF: https://onnx.ai/onnx/operators/onnx__Cast.html#cast-21
         // =================================== 作业 ===================================
-        return std::nullopt;
+        vector<Shape> shapes;
+        for (const auto &tensor : inputs) {
+            shapes.push_back(tensor->getDims());// return shape;
+        }
+        return shapes;
     }
 
     std::string CastObj::toString() const
