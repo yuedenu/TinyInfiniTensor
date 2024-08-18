@@ -18,7 +18,7 @@ optional<vector<Shape>> ConcatObj::inferShape(const TensorVec &inputs) {
     // REF: https://onnx.ai/onnx/operators/onnx__Concat.html#concat-13
     // 将张量列表连接成一个张量。所有输入张量必须具有相同的形状，但要连接的轴的维度大小除外
     // =================================== 作业 ===================================
-    for (int i = 1; i < inputs.size(); i++) {
+    for (auto i = 1; i < inputs.size(); i++) {
         dims.at(dim) += inputs[i]->getDims().at(dim);
     }
     return {{dims}};
