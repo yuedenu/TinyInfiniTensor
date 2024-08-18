@@ -66,7 +66,7 @@ namespace infini
         for(auto i = fb_map.begin(); i != fb_map.end(); i++){
             if(i->first + i->second == addr){
                 i->second += size;
-                auto j = i+1;
+                auto j = std::next(i);
                 if(j != fb_map.end() && i->first + i->second == j->first){
                     i->second += j->second;
                     fb_map.erase(j);
