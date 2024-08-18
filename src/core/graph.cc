@@ -106,6 +106,123 @@ namespace infini
         // 1. 去除冗余的算子（例如，两个相邻的算子都是 transpose 算子，且做的是相反的操作，可以将其全部删除）
         // 2. 合并算子（例如，矩阵乘算子中含有属性transA、transB，如果其输入存在transpose，且对最后两个维度做交换，就可以将transpose融入到矩阵乘算子的属性中去）
         // =================================== 作业 ===================================
+                if (ops.empty()) {
+            return;
+        }
+
+        IT_ASSERT(topo_sort() == true);
+        bool optimized_this_pass{false};
+        for (size_t i = 0; i < ops.size();) {
+            optimized_this_pass = false;
+            auto& op{ops.at(i)};
+            // rule 1, 2
+            if (op->type == OpType::Transpose) {
+                const auto& perm{as<TransposeObj>(op)->getPermute()};
+                for (auto& succ: op->successors) {
+                    auto succ_ptr{succ.lock()};
+                    if (!succ_ptr) {
+                        continue;
+                    }
+
+                    // rule 1
+                    if (succ_ptr->type == OpType::Transpose) {
+                        const auto& succ_perm{as<TransposeObj>(succ_ptr)->getPermute()};
+                        if (perm == succ_perm) {
+                            for (auto& succ2: succ_ptr->successors) {
+                                auto succ2_ptr{succ2.lock()};
+                                if (!succ2_ptr) {
+                                    continue;
+                                }
+
+                                // release tensor
+                                for (auto t: op->outputs) {
+                                    removeTensor(t);
+                                }
+                                for (auto t: succ_ptr->outputs) {
+                                    removeTensor(t);
+                                }
+
+                                // reconnect
+                                for (size_t i = 0; i < succ2_ptr->inputs.size(); ++i) {
+                                    if (succ2_ptr->inputs[i] == succ_ptr->outputs[0]) {
+                                        succ2_ptr->inputs[i] = op->inputs[0];
+                                    }
+                                }
+                                for (auto& input: succ2_ptr->inputs) {
+                                    input->removeTarget(op);
+                                    input->addTarget(succ2_ptr);
+                                }
+                                succ2_ptr->removePredecessors(succ_ptr);
+                            }
+
+                            // remove from ops
+                            for (auto it = ops.begin(); it != ops.end();) {
+                                if (*it == op) {
+                                    ops.erase(it);
+                                    break;
+                                } else {
+                                    ++it;
+                                }
+                            }
+
+                            for (auto it = ops.begin(); it != ops.end();) {
+                                if (*it == succ_ptr) {
+                                    ops.erase(it);
+                                    break;
+                                } else {
+                                    ++it;
+                                }
+                            }
+                            // The graph structure has been modified, we optimize from the begining
+                            i = 0;
+                            optimized_this_pass = true;
+                        }
+                    } else if (succ_ptr->type == OpType::MatMul) {
+                        // rule 2
+                        if ((perm.at(perm.size() - 1) == static_cast<int>(perm.size()) - 2) &&
+                            (perm.at(perm.size() - 2) == static_cast<int>(perm.size()) - 1)) {
+                            // can been trans
+                            if (op->outputs[0] == succ_ptr->inputs[0]) {
+                                // trans A
+                                as<MatmulObj>(succ_ptr)->setTransA(true);
+                                succ_ptr->inputs[0] = op->inputs[0];
+                                succ_ptr->inputs[0]->removeTarget(op);
+                                succ_ptr->inputs[0]->addTarget(succ_ptr);
+                            } else {
+                                // trans B
+                                as<MatmulObj>(succ_ptr)->setTransB(true);
+                                succ_ptr->inputs[1] = op->inputs[0];
+                                succ_ptr->inputs[1]->removeTarget(op);
+                                succ_ptr->inputs[1]->addTarget(succ_ptr);
+                            }
+                            // release tensor
+                            removeTensor(op->outputs[0]);
+                            // reconnect
+                            succ_ptr->removePredecessors(op);
+
+                            // remove from ops
+                            for (auto it = ops.begin(); it != ops.end();) {
+                                if (*it == op) {
+                                    ops.erase(it);
+                                    break;
+                                } else {
+                                    ++it;
+                                }
+                            }
+                            // The graph structure has been modified, we optimize from the begining
+                            i = 0;
+                            optimized_this_pass = true;
+                        }
+                    }
+                }
+            }
+
+            if(!optimized_this_pass) {
+                ++i;
+            }
+        }
+
+        IT_ASSERT(topo_sort() == true);
     }
 
     Tensor GraphObj::getTensor(int fuid) const
