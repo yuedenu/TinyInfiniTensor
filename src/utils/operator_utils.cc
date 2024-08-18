@@ -10,12 +10,14 @@ Shape infer_broadcast(const Shape &A, const Shape &B) {
     // REF: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
     // =================================== 作业 ===================================
     Shape output = Shape(std::max(A.size(), B.size()));
+    const Shape x;
+    const Shape n;
     if (A.size() > B.size()) {
-        auto x = A;
-        auto n = B;
+        x = A;
+        n = B;
     } else {
-        auto x = B;
-        auto n = A;
+        x = B;
+        n = A;
     }
     for (int i = x.size() - 1, j = n.size() - 1; i >= 0; i--, j--) {
         if (j < 0) {
